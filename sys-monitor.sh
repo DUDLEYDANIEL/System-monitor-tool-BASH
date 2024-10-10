@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # Variables
+LOGFILE=/var/log/sys-monitor.log
 THRESHOLD_CPU=80
 THRESHOLD_MEM=80
 THRESHOLD_DISK=80
-THRESHOLD_NET=1000 # 1000 KBps
+THRESHOLD_NET=1000 # 1000 KBps\
+EMAIL=example@mail.com #feel free to use your mail for alert
 # Function to check CPU usage
 function check_cpu() {
     # Read the first line from /proc/stat (aggregate CPU data)
@@ -71,12 +73,62 @@ check_mem(){
         echo "Memory usage is normal : $MEM_USAGE%"
       fi
     }
-# Dummy send_alert function for testing
-function send_alert() {
-    echo "$1"
+
+function check_disk() {
+  # This function can be written also based on the /proc/diskstats file
+  # For common purpose I will write using the df utility
+  DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+
+  # Compare with threshold
+  if (( DISK_USAGE > THRESHOLD_DISK )); then
+      send_alert "Disk usage is high: $DISK_USAGE%"
+  else
+      echo "Disk usage is normal: $DISK_USAGE%"
+  fi
 }
 
-# Test Block
+function check_net() {
+  # This function can be written also based on the /proc/net/dev file
+  INTERFACE="eth0"
+
+  net_stats=($(grep "INTERFACE" /proc/net/dev | tr -s " "| cut -d " " -f 3,11))
+
+  rx_bytes=${net_stats[0]}
+  tx_bytes=${net_stats[1]}
+
+  #convert the bytes into kbps
+  rx_kbps=$((rx_bytes / 1024))
+  tx_kbps=$((tx_bytes / 1024))
+
+  
+
+  if (( rx_kbps > THRESHOLD_NET || tx_kbps > THRESHOLD_NET )); then
+      send_alert "Network usage is high: $rx_kbps kB/s and $tx_kbps kB/s"
+  else
+      echo "Network usage is normal: $rx_kbps kB/s and $tx_kbps kB/s"
+  fi  
+
+
+}
+
+function log_metrics(){
+  TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+  echo "$TIMESTAMP CPU:$CPU_USAGE MEM:$MEM_USAGE Disk:$DISK_USAGE NET:$rx_kbps kB/s and $tx_kbps kB/s" >> $LOGFILE
+}
+
+function send_alert(){
+  SUBJECT="System Alert: $1"
+  echo "subject : $SUBJECT" | sendmail $EMAIL
+}
+# Test BlockNetwork usage is normal: 0 kB/s and 0 kB/s
+#
+function monitor(){
 echo "Monitoring started"
 check_cpu
 check_mem
+check_disk
+check_net
+log_metrics
+}
+
+monitor
